@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>YOLO AI + Move Pro</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial;
+    background: radial-gradient(circle at top, #0f1115, #07080b);
+    color: white;
+    text-align: center;
+}
+
+/* HEADER */
+h2 {
+    margin-top: 20px;
+    color: #00e5ff;
+    text-shadow: 0 0 10px #00e5ff;
+}
+
+/* CANVAS */
+canvas {
+    border: 2px solid rgba(0,229,255,0.5);
+    border-radius: 16px;
+    background: #14161a;
+    margin-top: 20px;
+    box-shadow: 0 0 25px rgba(0,229,255,0.15);
+}
+
+/* UI */
+input, button {
+    padding: 10px;
+    margin: 10px;
+    border-radius: 10px;
+    border: none;
+}
+
+input {
+    background: #1c1f26;
+    color: white;
+}
+
+button {
+    background: linear-gradient(90deg, #00e5ff, #00ffa2);
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    transform: scale(1.05);
+}
+
+/* 🔵 LOADING OVERLAY */
+#loading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-size: 20px;
+    color: #00e5ff;
+    z-index: 999;
+}
+
+.spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid #333;
+    border-top: 5px solid #00e5ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+</head>
+
+<body>
+
+<h2>YOLO AI Moving Objects (Pro UI)</h2>
+
+<canvas id="canvas" width="800" height="500"></canvas><br>
+
+<input type="file" id="fileInput" multiple>
+<button onclick="detectYOLO()">YOLO Detect</button>
+
+<!-- 🔵 LOADING SCREEN -->
+<div id="loading">
+    <div class="spinner"></div>
+    <div>Detecting objects...</div>
+</div>
+
+<script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const fileInput = document.getElementById("fileInput");
+const loading = document.getElementById("loading");
+
+let objects = [];
+
+/* ================= UPLOAD ================= */
+fileInput.addEventListener("change", function () {
+
+    for (let file of this.files) {
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+
+            const img = new Image();
+            img.src = e.target.result;
+
+            img.onload = function () {
+
+                objects.push({
+                    img,
+                    x: Math.random() * 600,
+                    y: Math.random() * 300,
+                    w: 150,
+                    h: 150,
+                    dx: Math.random() * 4 - 2,
+                    dy: Math.random() * 4 - 2,
+                    label: "Unknown"
+                });
+            };
+        };
+
+        reader.readAsDataURL(file);
+    }
+});
+
+/* ================= ANIMATE ================= */
+function animate() {
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    for (let obj of objects) {
+
+        if (!obj.img) continue;
+
+        obj.x += obj.dx;
+        obj.y += obj.dy;
+
+        if (obj.x <= 0 || obj.x + obj.w >= canvas.width) obj.dx *= -1;
+        if (obj.y <= 0 || obj.y + obj.h >= canvas.height) obj.dy *= -1;
+
+        ctx.drawImage(obj.img, obj.x, obj.y, obj.w, obj.h);
+
+        ctx.strokeStyle = "#00e5ff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(obj.x, obj.y, obj.w, obj.h);
+
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.fillRect(obj.x, obj.y - 24, obj.w, 22);
+
+        ctx.fillStyle = "#00e5ff";
+        ctx.font = "bold 13px Arial";
+        ctx.fillText(obj.label, obj.x + 6, obj.y - 8);
+    }
+
+    requestAnimationFrame(animate);
+}
+
+animate();
+
+/* ================= YOLO DETECT ================= */
+async function detectYOLO() {
+
+    const API_KEY = "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";
+
+    loading.style.display = "flex"; // 🔵 SHOW LOADING
+
+    try {
+
+        for (let obj of objects) {
+
+            const res = await fetch(obj.img.src);
+            const blob = await res.blob();
+
+            const response = await fetch(
+                "https://router.huggingface.co/hf-inference/models/facebook/detr-resnet-50",
+                {
+                    method: "POST",
+                    headers: {
+                        "Authorization": "Bearer " + API_KEY
+                    },
+                    body: blob
+                }
+            );
+
+            const data = await response.json();
+
+            if (data && data.length > 0) {
+                obj.label = data[0].label;
+            } else {
+                obj.label = "Unknown";
+            }
+        }
+
+    } catch (err) {
+        console.error(err);
+        objects.forEach(o => o.label = "Error");
+    }
+
+    loading.style.display = "none"; // 🔵 HIDE LOADING
+}
+
+</script>
+
+</body>
+</html>
